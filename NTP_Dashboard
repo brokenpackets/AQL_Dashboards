@@ -1,0 +1,11 @@
+let ntpData = `*:/NTP/status/system/variables`[0] | map(merge(_value))
+let serialMapping = `*:/Logs/var/log/messages`[0] | map(merge(_value))
+let output = newDict()
+for devID,devData in ntpData{
+    output[devID] = newDict()
+    output[devID]["hostname"] = serialMapping[devID]["hostname"]
+    output[devID]["peer"]= devData["refid"]
+    output[devID]["Stratum"]=devData["stratum"]
+    output[devID]["OffSet"]=devData["offset"]
+    }
+output
