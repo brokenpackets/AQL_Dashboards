@@ -1,0 +1,104 @@
+let SNToHostnameDict = newDict()
+let dataDeviceAnalytics = `analytics:/Devices/*/versioned-data/Device`
+for device, deviceData in dataDeviceAnalytics {
+   let mergedDeviceData = merge(deviceData)
+   SNToHostnameDict[device] = mergedDeviceData["hostname"]
+}
+
+# Get the interface names and descriptions
+let intfConfig = `*:/Sysdb/interface/config/eth/phy/slice/1/intfConfig/*` | recmap(2, merge(_value))
+let intfResult = newDict()
+for deviceKey, deviceVal in intfConfig {
+    let i = 0
+    intfResult[deviceKey] = newDict()
+    for interfaceKey, interfaceVal in deviceVal {
+        if reMatch(interfaceVal["description"], _PortDescription) {
+            intfResult[deviceKey][interfaceKey] = newDict()
+            intfResult[deviceKey][interfaceKey] = i
+            #intfResult[deviceKey][i]["Port Description"] = interfaceVal["description"]
+            let i = i + 1
+        }
+    }
+}
+
+let devices = merge(`analytics:/tags/labels/devices/Role/value/Border/elements`)
+
+let result = newDict()
+let id = 0
+let intfRates = `analytics:/Devices/*/versioned-data/interfaces/data/*/aggregate/rates/1m`[_timeWindowStart:_timeWindowEnd] | where(dictHasKey(devices, complexKey("{\"deviceID\": \""+_key+"\"}")))
+for device, deviceData in intfRates{
+    let deviceHostname = SNToHostnameDict[device]
+    result[deviceHostname] = newDict()
+    let avgIntfRatesIn = deviceData | map(_value | field("inOctets") | field("avg"))
+    let peakIntfRatesIn = deviceData | map(_value | field("inOctets") | field("max"))
+    let avgIntfRatesOut = deviceData | map(_value | field("outOctets") | field("avg"))
+    let peakIntfRatesOut = deviceData | map(_value | field("outOctets") | field("max"))
+    for intf, data in avgIntfRatesIn {
+        if length(data) > 1{
+            if dictHasKey(result[deviceHostname],intf) {
+            } else {
+                result[deviceHostname][intf] = newDict()
+            }
+            if dictHasKey(intfResult[device],intf) {
+                result[deviceHostname][intf]["avgIn"] = newDict()
+                result[deviceHostname][intf]["avgIn"] = data
+            }
+        }
+    }
+    for intf, data in peakIntfRatesIn {
+        if length(data) > 1{
+            if dictHasKey(result[deviceHostname],intf) {
+            } else {
+                result[deviceHostname][intf] = newDict()
+            }
+            if dictHasKey(intfResult[device],intf) {
+                result[deviceHostname][intf]["peakIn"] = newDict()
+                result[deviceHostname][intf]["peakIn"] = data
+            }
+        }
+    }
+    for intf, data in avgIntfRatesOut {
+        if length(data) > 1{
+            if dictHasKey(result[deviceHostname],intf) {
+            } else {
+                result[deviceHostname][intf] = newDict()
+            }
+            if dictHasKey(intfResult[device],intf) {
+                result[deviceHostname][intf]["avgOut"] = newDict()
+                result[deviceHostname][intf]["avgOut"] = data
+            }
+        }
+    }
+    for intf, data in peakIntfRatesOut {
+        if length(data) > 1{
+            if dictHasKey(result[deviceHostname],intf) {
+            } else {
+                result[deviceHostname][intf] = newDict()
+            }
+            if dictHasKey(intfResult[device],intf) {
+                result[deviceHostname][intf]["peakOut"] = newDict()
+                result[deviceHostname][intf]["peakOut"] = data
+            }
+        }
+    }
+}
+let newResult = newDict()
+for device, useless in result {
+    for name,item in useless{
+        let newname = str(device)+"-"+str(name)
+        #newResult[newname] = newDict()
+        if dictHasKey(item, "avgIn") {
+            newResult[newname+"-avgIn"] = (item["avgIn"]*8)/1000
+        }
+        if dictHasKey(item, "peakIn") {
+            newResult[newname+"-peakIn"] = (item["peakIn"]*8)/1000
+        }
+        if dictHasKey(item, "avgOut") {
+            newResult[newname+"-avgOut"] = (item["avgOut"]*8)/1000
+        }
+        if dictHasKey(item, "peakOut") {
+            newResult[newname+"-peakOut"] = (item["peakOut"]*8)/1000
+        }
+    }
+}
+newResult
